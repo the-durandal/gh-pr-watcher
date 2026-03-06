@@ -1,20 +1,26 @@
-const orgEl = document.getElementById('org');
-const authorsEl = document.getElementById('authors');
-const intervalEl = document.getElementById('interval');
-const saveBtn = document.getElementById('saveBtn');
-const checkBtn = document.getElementById('checkBtn');
-const alertsEl = document.getElementById('alerts');
-const authStatusEl = document.getElementById('authStatus');
-const statusEl = document.getElementById('status');
+export {};
 
-let currentState = null;
+const orgEl = document.getElementById('org') as HTMLInputElement;
+const authorsEl = document.getElementById('authors') as HTMLTextAreaElement;
+const intervalEl = document.getElementById('interval') as HTMLInputElement;
+const saveBtn = document.getElementById('saveBtn') as HTMLButtonElement;
+const checkBtn = document.getElementById('checkBtn') as HTMLButtonElement;
+const alertsEl = document.getElementById('alerts') as HTMLDivElement;
+const authStatusEl = document.getElementById('authStatus') as HTMLParagraphElement;
+const statusEl = document.getElementById('status') as HTMLParagraphElement;
 
-function fmtTime(ts) {
+declare global {
+  interface Window {
+    api: any;
+  }
+}
+
+function fmtTime(ts?: number | null) {
   if (!ts) return 'never';
   return new Date(ts).toLocaleString();
 }
 
-function relTime(ts) {
+function relTime(ts: number) {
   const s = Math.floor((Date.now() - ts) / 1000);
   if (s < 60) return `${s}s ago`;
   if (s < 3600) return `${Math.floor(s / 60)}m ago`;
@@ -22,7 +28,17 @@ function relTime(ts) {
   return `${Math.floor(s / 86400)}d ago`;
 }
 
-function renderAlerts(state) {
+function escapeHtml(text: string) {
+  return (text || '').replace(/[&<>'"]/g, (c) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+  }[c] as string));
+}
+
+function renderAlerts(state: any) {
   const alerts = state.alerts || [];
   if (!alerts.length) {
     alertsEl.innerHTML = '<p class="empty">No alerts yet.</p>';
@@ -61,25 +77,14 @@ function renderAlerts(state) {
   });
 }
 
-function escapeHtml(text) {
-  return (text || '').replace(/[&<>'"]/g, (c) => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#039;'
-  }[c]));
-}
-
-function render(state, auth) {
-  currentState = state;
+function render(state: any, auth?: { ok: boolean }) {
   orgEl.value = state.config.org || '';
   authorsEl.value = state.config.authorsText || '';
-  intervalEl.value = state.config.intervalMinutes || 5;
+  intervalEl.value = String(state.config.intervalMinutes || 5);
   statusEl.textContent = `Last check: ${fmtTime(state.lastCheckAt)}${state.lastError ? ` • Error: ${state.lastError}` : ''}`;
   authStatusEl.textContent = auth?.ok
     ? 'GitHub auth: connected'
-    : `GitHub auth: not connected. Run \`gh auth login\` in terminal.`;
+    : 'GitHub auth: not connected. Run `gh auth login` in terminal.';
   renderAlerts(state);
 }
 
@@ -100,7 +105,7 @@ checkBtn.addEventListener('click', async () => {
   statusEl.textContent = res?.message || 'Checked.';
 });
 
-window.api.onStateUpdate((state) => {
+window.api.onStateUpdate((state: any) => {
   render(state, { ok: !state.lastError || !String(state.lastError).includes('auth') });
 });
 

@@ -2,13 +2,13 @@
   "name": "gh-pr-watcher",
   "version": "0.1.0",
   "description": "Tray app to monitor GitHub PRs by author/org via gh CLI",
-  "main": "main.js",
+  "main": "dist/main.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "electron .",
-    "dev": "electron .",
-    "pack": "electron-builder --dir",
-    "dist": "electron-builder"
+    "build": "tsc && node scripts/copy-assets.js",
+    "start": "npm run build && electron .",
+    "dev": "npm run build && electron .",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder"
   },
   "keywords": [],
   "author": "",
@@ -21,15 +21,17 @@
       "category": "public.app-category.developer-tools"
     },
     "files": [
-      "**/*",
-      "!node_modules/.cache/**"
+      "dist/**/*",
+      "package.json"
     ],
     "directories": {
       "output": "dist"
     }
   },
   "devDependencies": {
+    "@types/node": "^22.13.5",
     "electron": "^31.0.2",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^24.13.3",
+    "typescript": "^5.8.2"
   }
 }

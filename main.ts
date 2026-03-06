@@ -1,36 +1,67 @@
-const { app, BrowserWindow, Tray, Menu, nativeImage, Notification, shell, ipcMain } = require('electron');
-const path = require('path');
-const fs = require('fs');
-const { execFile } = require('child_process');
+import { app, BrowserWindow, Tray, Menu, nativeImage, Notification, shell, ipcMain } from 'electron';
+import path from 'path';
+import fs from 'fs';
+import { execFile } from 'child_process';
 
-let tray = null;
-let win = null;
-let pollTimer = null;
+type AppState = {
+  config: {
+    org: string;
+    authorsText: string;
+    intervalMinutes: number;
+    autoStart: boolean;
+  };
+  seen: Record<string, { updatedAt: string; state: string; title: string }>;
+  snoozes: Record<string, number>;
+  alerts: Alert[];
+  lastCheckAt: number | null;
+  lastError: string | null;
+};
+
+type Alert = {
+  id: string;
+  kind: 'new' | 'updated';
+  number: number;
+  title: string;
+  url: string;
+  updatedAt: string;
+  state: string;
+  repo: string;
+  author: string;
+  isDraft: boolean;
+  createdAt: number;
+  opened: boolean;
+};
+
+type PR = Omit<Alert, 'id' | 'kind' | 'createdAt' | 'opened'>;
+
+let tray: Tray | null = null;
+let win: BrowserWindow | null = null;
+let pollTimer: NodeJS.Timeout | null = null;
 
 const statePath = () => path.join(app.getPath('userData'), 'state.json');
 
-const defaultState = {
+const defaultState: AppState = {
   config: {
     org: '',
     authorsText: '',
     intervalMinutes: 5,
     autoStart: true,
   },
-  seen: {}, // url -> { updatedAt, state, title }
-  snoozes: {}, // url -> unix ms
-  alerts: [], // newest first
+  seen: {},
+  snoozes: {},
+  alerts: [],
   lastCheckAt: null,
   lastError: null,
 };
 
 let state = loadState();
 
-function loadState() {
+function loadState(): AppState {
   try {
     const p = statePath();
     if (!fs.existsSync(p)) return { ...defaultState };
     const raw = fs.readFileSync(p, 'utf8');
-    const parsed = JSON.parse(raw);
+    const parsed = JSON.parse(raw) as Partial<AppState>;
     return {
       ...defaultState,
       ...parsed,
@@ -50,14 +81,14 @@ function saveState() {
   fs.writeFileSync(p, JSON.stringify(state, null, 2));
 }
 
-function getAuthors() {
+function getAuthors(): string[] {
   return (state.config.authorsText || '')
     .split(/[\n,\s]+/)
     .map((s) => s.trim())
     .filter(Boolean);
 }
 
-function runGh(args) {
+function runGh(args: string[]): Promise<{ ok: boolean; stdout: string; stderr: string; error: Error | null }> {
   return new Promise((resolve) => {
     execFile('gh', args, { timeout: 45000, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
       resolve({ ok: !error, stdout: stdout || '', stderr: stderr || '', error });
@@ -73,17 +104,17 @@ async function checkAuth() {
   };
 }
 
-function isSnoozed(url) {
+function isSnoozed(url: string): boolean {
   const until = state.snoozes[url] || 0;
   return until > Date.now();
 }
 
-function addAlert(alert) {
+function addAlert(alert: Alert) {
   state.alerts.unshift(alert);
   if (state.alerts.length > 300) state.alerts = state.alerts.slice(0, 300);
 }
 
-function makeNotification(alert) {
+function makeNotification(alert: Alert) {
   const notif = new Notification({
     title: alert.kind === 'new' ? `New PR by @${alert.author}` : `PR updated by @${alert.author}`,
     body: `${alert.repo} #${alert.number}: ${alert.title}`,
@@ -101,12 +132,12 @@ function tomorrow9am() {
   return d.getTime();
 }
 
-async function fetchPRs() {
+async function fetchPRs(): Promise<PR[]> {
   const org = (state.config.org || '').trim();
   const authors = getAuthors();
   if (!org || authors.length === 0) return [];
 
-  const all = [];
+  const all: PR[] = [];
   for (const author of authors) {
     const query = `org:${org} author:${author}`;
     const args = [
@@ -119,10 +150,9 @@ async function fetchPRs() {
       'number,title,url,updatedAt,state,repository,author,isDraft',
     ];
     const res = await runGh(args);
-    if (!res.ok) {
-      throw new Error((res.stderr || res.stdout || 'gh search prs failed').trim());
-    }
-    let rows = [];
+    if (!res.ok) throw new Error((res.stderr || res.stdout || 'gh search prs failed').trim());
+
+    let rows: any[] = [];
     try {
       rows = JSON.parse(res.stdout || '[]');
     } catch {
@@ -143,7 +173,7 @@ async function fetchPRs() {
     }
   }
 
-  const dedup = new Map();
+  const dedup = new Map<string, PR>();
   for (const pr of all) dedup.set(pr.url, pr);
   return Array.from(dedup.values());
 }
@@ -166,10 +196,10 @@ async function runCheck(manual = false) {
     for (const pr of prs) {
       const prev = state.seen[pr.url];
       const changed = !prev || prev.updatedAt !== pr.updatedAt || prev.state !== pr.state;
-      const kind = !prev ? 'new' : 'updated';
+      const kind: 'new' | 'updated' = !prev ? 'new' : 'updated';
 
       if (changed) {
-        const alert = {
+        const alert: Alert = {
           id: `${pr.url}#${pr.updatedAt}`,
           kind,
           ...pr,
@@ -194,8 +224,8 @@ async function runCheck(manual = false) {
 
     if (manual) return { ok: true, message: `Checked ${prs.length} PRs, ${notifications} notifications.` };
     return { ok: true };
-  } catch (err) {
-    state.lastError = err.message || String(err);
+  } catch (err: any) {
+    state.lastError = err?.message || String(err);
     state.lastCheckAt = Date.now();
     saveState();
     broadcastState();
@@ -207,10 +237,6 @@ function restartPolling() {
   if (pollTimer) clearInterval(pollTimer);
   const ms = Math.max(1, Number(state.config.intervalMinutes || 5)) * 60_000;
   pollTimer = setInterval(() => runCheck(false), ms);
-}
-
-function getWindowHtml() {
-  return path.join(__dirname, 'renderer', 'index.html');
 }
 
 function createWindow() {
@@ -228,10 +254,10 @@ function createWindow() {
     },
   });
 
-  win.loadFile(getWindowHtml());
+  win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   win.on('close', (e) => {
     e.preventDefault();
-    win.hide();
+    win?.hide();
   });
 }
 
@@ -244,7 +270,7 @@ function createTray() {
     { label: 'Open GH PR Watcher', click: () => showWindow() },
     { label: 'Check Now', click: () => runCheck(true) },
     { type: 'separator' },
-    { label: 'Quit', click: () => { app.isQuitting = true; app.quit(); } },
+    { label: 'Quit', click: () => { (app as any).isQuitting = true; app.quit(); } },
   ]);
 
   tray.setContextMenu(menu);
@@ -286,7 +312,7 @@ ipcMain.handle('state:get', async () => {
   };
 });
 
-ipcMain.handle('config:save', async (_evt, cfg) => {
+ipcMain.handle('config:save', async (_evt, cfg: { org: string; authorsText: string; intervalMinutes: number }) => {
   state.config = {
     ...state.config,
     org: (cfg.org || '').trim(),
@@ -300,7 +326,6 @@ ipcMain.handle('config:save', async (_evt, cfg) => {
 });
 
 ipcMain.handle('check:now', async () => runCheck(true));
-
 ipcMain.handle('auth:status', async () => checkAuth());
 
 ipcMain.handle('auth:help', async () => {
@@ -310,12 +335,12 @@ ipcMain.handle('auth:help', async () => {
   return { cmd };
 });
 
-ipcMain.handle('alert:open', async (_evt, url) => {
+ipcMain.handle('alert:open', async (_evt, url: string) => {
   shell.openExternal(url);
   return { ok: true };
 });
 
-ipcMain.handle('alert:snooze', async (_evt, url, mode) => {
+ipcMain.handle('alert:snooze', async (_evt, url: string, mode: '1h' | 'tomorrow') => {
   if (!url) return { ok: false };
   let until = 0;
   if (mode === '1h') until = Date.now() + 60 * 60 * 1000;
@@ -326,7 +351,7 @@ ipcMain.handle('alert:snooze', async (_evt, url, mode) => {
   return { ok: true, until };
 });
 
-ipcMain.handle('alert:unsnooze', async (_evt, url) => {
+ipcMain.handle('alert:unsnooze', async (_evt, url: string) => {
   delete state.snoozes[url];
   saveState();
   broadcastState();
@@ -347,9 +372,9 @@ app.whenReady().then(async () => {
 });
 
 app.on('before-quit', () => {
-  app.isQuitting = true;
+  (app as any).isQuitting = true;
 });
 
-app.on('window-all-closed', (e) => {
-  e.preventDefault();
+app.on('window-all-closed', () => {
+  // Keep tray app alive when all windows close.
 });
