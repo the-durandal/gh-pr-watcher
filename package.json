@@ -1,0 +1,35 @@
+{
+  "name": "gh-pr-watcher",
+  "version": "0.1.0",
+  "description": "Tray app to monitor GitHub PRs by author/org via gh CLI",
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "electron .",
+    "dev": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "build": {
+    "appId": "com.durandal.ghprwatcher",
+    "productName": "GH PR Watcher",
+    "mac": {
+      "category": "public.app-category.developer-tools"
+    },
+    "files": [
+      "**/*",
+      "!node_modules/.cache/**"
+    ],
+    "directories": {
+      "output": "dist"
+    }
+  },
+  "devDependencies": {
+    "electron": "^31.0.2",
+    "electron-builder": "^24.13.3"
+  }
+}

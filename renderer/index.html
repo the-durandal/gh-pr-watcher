@@ -1,0 +1,41 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self';" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GH PR Watcher</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main>
+      <h1>GH PR Watcher</h1>
+
+      <section class="card">
+        <h2>Config</h2>
+        <label>Organization
+          <input id="org" placeholder="e.g. openai" />
+        </label>
+        <label>Authors (comma/newline)
+          <textarea id="authors" rows="4" placeholder="alice, bob, carol"></textarea>
+        </label>
+        <label>Interval (minutes)
+          <input id="interval" type="number" min="1" step="1" />
+        </label>
+        <div class="row">
+          <button id="saveBtn">Save</button>
+          <button id="checkBtn">Check now</button>
+        </div>
+        <p id="authStatus" class="muted"></p>
+        <p id="status" class="muted"></p>
+      </section>
+
+      <section class="card">
+        <h2>Notification Center</h2>
+        <div id="alerts"></div>
+      </section>
+    </main>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>
