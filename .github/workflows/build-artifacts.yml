@@ -17,7 +17,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            release_build_cmd: npx electron-builder --publish never --linux AppImage
+          - os: macos-latest
+            release_build_cmd: npx electron-builder --publish never --mac dmg zip
+          - os: windows-latest
+            release_build_cmd: npx electron-builder --publish never --win nsis
 
     steps:
       - name: Checkout
@@ -32,9 +38,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Build app source
+        run: npm run build
+
       - name: Build release artifacts (tag)
         if: startsWith(github.ref, 'refs/tags/v')
-        run: npm run dist
+        run: ${{ matrix.release_build_cmd }}
 
       - name: Build packaged app (branch/PR)
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
