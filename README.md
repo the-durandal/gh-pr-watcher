@@ -43,6 +43,18 @@ npm run dist
 
 Artifacts will be in `dist/`.
 
+## macOS note (unsigned builds)
+
+Current releases are not code-signed/notarized yet, so Gatekeeper may block first launch.
+
+If macOS says the app is damaged, remove quarantine and open again:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/GH PR Watcher.app"
+```
+
+(or run it against the app inside the mounted DMG/unzipped folder before moving it).
+
 ## Notes
 
 PR query uses:
