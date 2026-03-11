@@ -3,6 +3,12 @@ import path from 'path';
 import fs from 'fs';
 import { execFile } from 'child_process';
 
+type LogEntry = {
+  ts: number;
+  level: 'info' | 'warn' | 'error';
+  message: string;
+};
+
 type AppState = {
   config: {
     org: string;
@@ -13,6 +19,7 @@ type AppState = {
   seen: Record<string, { updatedAt: string; state: string; title: string }>;
   snoozes: Record<string, number>;
   alerts: Alert[];
+  logs: LogEntry[];
   lastCheckAt: number | null;
   lastError: string | null;
 };
@@ -50,6 +57,7 @@ const defaultState: AppState = {
   seen: {},
   snoozes: {},
   alerts: [],
+  logs: [],
   lastCheckAt: null,
   lastError: null,
 };
@@ -69,6 +77,7 @@ function loadState(): AppState {
       seen: parsed.seen || {},
       snoozes: parsed.snoozes || {},
       alerts: parsed.alerts || [],
+      logs: parsed.logs || [],
     };
   } catch {
     return { ...defaultState };
@@ -81,6 +90,15 @@ function saveState() {
   fs.writeFileSync(p, JSON.stringify(state, null, 2));
 }
 
+function addLog(level: LogEntry['level'], message: string) {
+  state.logs.unshift({ ts: Date.now(), level, message });
+  if (state.logs.length > 500) state.logs = state.logs.slice(0, 500);
+}
+
+function clearLogs() {
+  state.logs = [];
+}
+
 function getAuthors(): string[] {
   return (state.config.authorsText || '')
     .split(/[\n,\s]+/)
@@ -88,10 +106,33 @@ function getAuthors(): string[] {
     .filter(Boolean);
 }
 
+function compact(s: string, max = 280): string {
+  const one = (s || '').replace(/\s+/g, ' ').trim();
+  return one.length > max ? `${one.slice(0, max)}…` : one;
+}
+
 function runGh(args: string[]): Promise<{ ok: boolean; stdout: string; stderr: string; error: Error | null }> {
+  const cmd = `gh ${args.join(' ')}`;
+  const started = Date.now();
+  addLog('info', `CMD start: ${cmd}`);
+
   return new Promise((resolve) => {
     execFile('gh', args, { timeout: 45000, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
-      resolve({ ok: !error, stdout: stdout || '', stderr: stderr || '', error });
+      const took = Date.now() - started;
+      const out = stdout || '';
+      const err = stderr || '';
+
+      if (error) {
+        const code = (error as any)?.code ?? 'unknown';
+        addLog('error', `CMD fail (${took}ms, code=${code}): ${cmd}`);
+        if (err.trim()) addLog('error', `stderr: ${compact(err)}`);
+        else if (out.trim()) addLog('error', `stdout: ${compact(out)}`);
+      } else {
+        addLog('info', `CMD ok (${took}ms): ${cmd}`);
+        if (err.trim()) addLog('warn', `stderr: ${compact(err)}`);
+      }
+
+      resolve({ ok: !error, stdout: out, stderr: err, error });
     });
   });
 }
@@ -135,7 +176,12 @@ function tomorrow9am() {
 async function fetchPRs(): Promise<PR[]> {
   const org = (state.config.org || '').trim();
   const authors = getAuthors();
-  if (!org || authors.length === 0) return [];
+  if (!org || authors.length === 0) {
+    addLog('warn', 'Skipping check: org or authors are not configured.');
+    return [];
+  }
+
+  addLog('info', `Checking PRs for org=${org}, authors=${authors.join(', ')}`);
 
   const all: PR[] = [];
   for (const author of authors) {
@@ -180,9 +226,11 @@ async function fetchPRs(): Promise<PR[]> {
 
 async function runCheck(manual = false) {
   try {
+    addLog('info', manual ? 'Manual check started.' : 'Scheduled check started.');
     const auth = await checkAuth();
     if (!auth.ok) {
       state.lastError = 'GitHub auth missing. Run: gh auth login';
+      addLog('error', state.lastError);
       state.lastCheckAt = Date.now();
       saveState();
       broadcastState();
@@ -208,9 +256,12 @@ async function runCheck(manual = false) {
         };
 
         addAlert(alert);
+        addLog('info', `${kind.toUpperCase()} ${pr.repo} #${pr.number} by @${pr.author}`);
         if (!isSnoozed(pr.url)) {
           makeNotification(alert);
           notifications += 1;
+        } else {
+          addLog('info', `Notification suppressed (snoozed): ${pr.repo} #${pr.number}`);
         }
       }
 
@@ -219,6 +270,7 @@ async function runCheck(manual = false) {
 
     state.lastError = null;
     state.lastCheckAt = now;
+    addLog('info', `Check complete: ${prs.length} PRs scanned, ${notifications} notifications sent.`);
     saveState();
     broadcastState();
 
@@ -226,6 +278,7 @@ async function runCheck(manual = false) {
     return { ok: true };
   } catch (err: any) {
     state.lastError = err?.message || String(err);
+    addLog('error', `Check failed: ${state.lastError}`);
     state.lastCheckAt = Date.now();
     saveState();
     broadcastState();
@@ -236,6 +289,7 @@ async function runCheck(manual = false) {
 function restartPolling() {
   if (pollTimer) clearInterval(pollTimer);
   const ms = Math.max(1, Number(state.config.intervalMinutes || 5)) * 60_000;
+  addLog('info', `Polling interval set to ${Math.round(ms / 60000)} minute(s).`);
   pollTimer = setInterval(() => runCheck(false), ms);
 }
 
@@ -292,6 +346,7 @@ function broadcastState() {
   win.webContents.send('state:update', {
     config: state.config,
     alerts: state.alerts.slice(0, 100),
+    logs: state.logs.slice(0, 200),
     snoozes: state.snoozes,
     lastCheckAt: state.lastCheckAt,
     lastError: state.lastError,
@@ -304,6 +359,7 @@ ipcMain.handle('state:get', async () => {
   return {
     config: state.config,
     alerts: state.alerts.slice(0, 100),
+    logs: state.logs.slice(0, 200),
     snoozes: state.snoozes,
     lastCheckAt: state.lastCheckAt,
     lastError: state.lastError,
@@ -319,6 +375,7 @@ ipcMain.handle('config:save', async (_evt, cfg: { org: string; authorsText: stri
     authorsText: (cfg.authorsText || '').trim(),
     intervalMinutes: Math.max(1, Number(cfg.intervalMinutes || 5)),
   };
+  addLog('info', `Config saved: org=${state.config.org}, interval=${state.config.intervalMinutes}m`);
   saveState();
   restartPolling();
   broadcastState();
@@ -336,7 +393,10 @@ ipcMain.handle('auth:help', async () => {
 });
 
 ipcMain.handle('alert:open', async (_evt, url: string) => {
+  addLog('info', `Opened PR in browser: ${url}`);
   shell.openExternal(url);
+  saveState();
+  broadcastState();
   return { ok: true };
 });
 
@@ -345,7 +405,10 @@ ipcMain.handle('alert:snooze', async (_evt, url: string, mode: '1h' | 'tomorrow'
   let until = 0;
   if (mode === '1h') until = Date.now() + 60 * 60 * 1000;
   if (mode === 'tomorrow') until = tomorrow9am();
-  if (until > 0) state.snoozes[url] = until;
+  if (until > 0) {
+    state.snoozes[url] = until;
+    addLog('info', `Snoozed ${url} until ${new Date(until).toLocaleString()}`);
+  }
   saveState();
   broadcastState();
   return { ok: true, until };
@@ -353,12 +416,22 @@ ipcMain.handle('alert:snooze', async (_evt, url: string, mode: '1h' | 'tomorrow'
 
 ipcMain.handle('alert:unsnooze', async (_evt, url: string) => {
   delete state.snoozes[url];
+  addLog('info', `Removed snooze: ${url}`);
+  saveState();
+  broadcastState();
+  return { ok: true };
+});
+
+ipcMain.handle('logs:clear', async () => {
+  clearLogs();
+  addLog('info', 'Logs cleared.');
   saveState();
   broadcastState();
   return { ok: true };
 });
 
 app.whenReady().then(async () => {
+  addLog('info', 'App started.');
   createWindow();
   createTray();
   restartPolling();

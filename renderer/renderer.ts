@@ -8,6 +8,8 @@ const checkBtn = document.getElementById('checkBtn') as HTMLButtonElement;
 const alertsEl = document.getElementById('alerts') as HTMLDivElement;
 const authStatusEl = document.getElementById('authStatus') as HTMLParagraphElement;
 const statusEl = document.getElementById('status') as HTMLParagraphElement;
+const logsEl = document.getElementById('logs') as HTMLDivElement;
+const clearLogsBtn = document.getElementById('clearLogsBtn') as HTMLButtonElement;
 
 declare global {
   interface Window {
@@ -77,6 +79,19 @@ function renderAlerts(state: any) {
   });
 }
 
+function renderLogs(state: any) {
+  const logs = state.logs || [];
+  if (!logs.length) {
+    logsEl.innerHTML = '<p class="empty">No logs yet.</p>';
+    return;
+  }
+
+  logsEl.innerHTML = logs.map((l: any) => {
+    const ts = new Date(l.ts).toLocaleString();
+    return `<div class="log-item"><span class="log-ts">${ts}</span><span class="log-level ${l.level}">${String(l.level).toUpperCase()}</span>${escapeHtml(l.message || '')}</div>`;
+  }).join('');
+}
+
 function render(state: any, auth?: { ok: boolean }) {
   orgEl.value = state.config.org || '';
   authorsEl.value = state.config.authorsText || '';
@@ -86,6 +101,7 @@ function render(state: any, auth?: { ok: boolean }) {
     ? 'GitHub auth: connected'
     : 'GitHub auth: not connected. Run `gh auth login` in terminal.';
   renderAlerts(state);
+  renderLogs(state);
 }
 
 saveBtn.addEventListener('click', async () => {
@@ -103,6 +119,10 @@ checkBtn.addEventListener('click', async () => {
   const res = await window.api.checkNow();
   checkBtn.disabled = false;
   statusEl.textContent = res?.message || 'Checked.';
+});
+
+clearLogsBtn.addEventListener('click', async () => {
+  await window.api.clearLogs();
 });
 
 window.api.onStateUpdate((state: any) => {

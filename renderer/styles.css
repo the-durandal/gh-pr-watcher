@@ -20,3 +20,14 @@ textarea { resize: vertical; }
 .actions .snooze { background:#423; }
 .actions .unsnooze { background:#243; }
 .empty { color:#9ca9bf; font-size:13px; }
+.header-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+.header-row h2 { margin:0; }
+button.danger { width:auto; padding:6px 10px; background:#4a1f1f; border-color:#6b2a2a; cursor:pointer; }
+#logs { max-height:220px; overflow:auto; border:1px solid #2d3547; border-radius:8px; padding:8px; background:#0d121b; }
+.log-item { font-size:12px; padding:6px 0; border-bottom:1px solid #222a39; }
+.log-item:last-child { border-bottom:none; }
+.log-ts { color:#9ca9bf; margin-right:6px; }
+.log-level { font-weight:700; margin-right:6px; }
+.log-level.info { color:#7cc4ff; }
+.log-level.warn { color:#ffd27a; }
+.log-level.error { color:#ff8b8b; }
