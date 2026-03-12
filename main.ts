@@ -44,6 +44,7 @@ type PR = Omit<Alert, 'id' | 'kind' | 'createdAt' | 'opened'>;
 let tray: Tray | null = null;
 let win: BrowserWindow | null = null;
 let pollTimer: NodeJS.Timeout | null = null;
+let ghBinary: string | null = null;
 
 const statePath = () => path.join(app.getPath('userData'), 'state.json');
 
@@ -111,13 +112,39 @@ function compact(s: string, max = 280): string {
   return one.length > max ? `${one.slice(0, max)}…` : one;
 }
 
+function resolveGhBinary(): string {
+  if (ghBinary) return ghBinary;
+
+  const candidates = [
+    process.env.GH_PATH,
+    '/opt/homebrew/bin/gh',
+    '/usr/local/bin/gh',
+    '/home/linuxbrew/.linuxbrew/bin/gh',
+    '/usr/bin/gh',
+    'gh',
+  ].filter(Boolean) as string[];
+
+  for (const c of candidates) {
+    if (c === 'gh' || fs.existsSync(c)) {
+      ghBinary = c;
+      addLog('info', `Using gh binary: ${ghBinary}`);
+      return ghBinary;
+    }
+  }
+
+  ghBinary = 'gh';
+  addLog('warn', 'Could not resolve absolute gh path; using PATH lookup for gh.');
+  return ghBinary;
+}
+
 function runGh(args: string[]): Promise<{ ok: boolean; stdout: string; stderr: string; error: Error | null }> {
-  const cmd = `gh ${args.join(' ')}`;
+  const gh = resolveGhBinary();
+  const cmd = `${gh} ${args.join(' ')}`;
   const started = Date.now();
   addLog('info', `CMD start: ${cmd}`);
 
   return new Promise((resolve) => {
-    execFile('gh', args, { timeout: 45000, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
+    execFile(gh, args, { timeout: 45000, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
       const took = Date.now() - started;
       const out = stdout || '';
       const err = stderr || '';
@@ -125,6 +152,9 @@ function runGh(args: string[]): Promise<{ ok: boolean; stdout: string; stderr: s
       if (error) {
         const code = (error as any)?.code ?? 'unknown';
         addLog('error', `CMD fail (${took}ms, code=${code}): ${cmd}`);
+        if (code === 'ENOENT') {
+          addLog('error', 'Cannot find gh. Please run `which gh` in your terminal and paste the result into the chat, then set GH_PATH to that value.');
+        }
         if (err.trim()) addLog('error', `stderr: ${compact(err)}`);
         else if (out.trim()) addLog('error', `stdout: ${compact(out)}`);
       } else {
@@ -139,6 +169,13 @@ function runGh(args: string[]): Promise<{ ok: boolean; stdout: string; stderr: s
 
 async function checkAuth() {
   const res = await runGh(['auth', 'status']);
+  const code = (res.error as any)?.code;
+  if (!res.ok && code === 'ENOENT') {
+    return {
+      ok: false,
+      details: 'Cannot find gh. Please run `which gh` in Terminal and paste it here. Then set GH_PATH to that path.',
+    };
+  }
   return {
     ok: res.ok,
     details: res.ok ? 'Authenticated' : (res.stderr || res.stdout || 'Not authenticated').trim(),
@@ -229,7 +266,7 @@ async function runCheck(manual = false) {
     addLog('info', manual ? 'Manual check started.' : 'Scheduled check started.');
     const auth = await checkAuth();
     if (!auth.ok) {
-      state.lastError = 'GitHub auth missing. Run: gh auth login';
+      state.lastError = auth.details || 'GitHub auth missing. Run: gh auth login';
       addLog('error', state.lastError);
       state.lastCheckAt = Date.now();
       saveState();
