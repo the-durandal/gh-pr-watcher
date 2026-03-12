@@ -5,6 +5,7 @@ const authorsEl = document.getElementById('authors') as HTMLTextAreaElement;
 const intervalEl = document.getElementById('interval') as HTMLInputElement;
 const saveBtn = document.getElementById('saveBtn') as HTMLButtonElement;
 const checkBtn = document.getElementById('checkBtn') as HTMLButtonElement;
+const reloadBtn = document.getElementById('reloadBtn') as HTMLButtonElement;
 const alertsEl = document.getElementById('alerts') as HTMLDivElement;
 const authStatusEl = document.getElementById('authStatus') as HTMLParagraphElement;
 const statusEl = document.getElementById('status') as HTMLParagraphElement;
@@ -109,14 +110,18 @@ function render(state: any, auth?: { ok: boolean }) {
   renderLogs(state);
 }
 
-saveBtn.addEventListener('click', async () => {
+async function saveConfigUi() {
   const cfg = {
     org: orgEl.value,
     authorsText: authorsEl.value,
     intervalMinutes: Number(intervalEl.value || 5),
   };
   await window.api.saveConfig(cfg);
-  statusEl.textContent = 'Saved.';
+  statusEl.textContent = `Saved at ${new Date().toLocaleTimeString()}`;
+}
+
+saveBtn.addEventListener('click', async () => {
+  await saveConfigUi();
 });
 
 checkBtn.addEventListener('click', async () => {
@@ -126,9 +131,28 @@ checkBtn.addEventListener('click', async () => {
   statusEl.textContent = res?.message || 'Checked.';
 });
 
+reloadBtn.addEventListener('click', async () => {
+  await window.api.reloadState();
+  statusEl.textContent = `Reloaded from disk at ${new Date().toLocaleTimeString()}`;
+});
+
 clearLogsBtn.addEventListener('click', async () => {
   await window.api.clearLogs();
 });
+
+let autoSaveTimer: number | undefined;
+function scheduleAutoSave() {
+  if (autoSaveTimer) window.clearTimeout(autoSaveTimer);
+  autoSaveTimer = window.setTimeout(() => {
+    saveConfigUi().catch(() => {
+      statusEl.textContent = 'Auto-save failed';
+    });
+  }, 500);
+}
+
+orgEl.addEventListener('input', scheduleAutoSave);
+authorsEl.addEventListener('input', scheduleAutoSave);
+intervalEl.addEventListener('input', scheduleAutoSave);
 
 window.api.onStateUpdate((state: any) => {
   render(state, { ok: !state.lastError || !String(state.lastError).includes('auth') });

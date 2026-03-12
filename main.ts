@@ -75,8 +75,7 @@ function loadState(): AppState {
     }
     const raw = fs.readFileSync(p, 'utf8');
     const parsed = JSON.parse(raw) as Partial<AppState>;
-    writeFileLog(`${new Date().toISOString()} [INFO] loaded state from ${p}`);
-    return {
+    const loaded = {
       ...defaultState,
       ...parsed,
       config: { ...defaultState.config, ...(parsed.config || {}) },
@@ -85,6 +84,8 @@ function loadState(): AppState {
       alerts: parsed.alerts || [],
       logs: parsed.logs || [],
     };
+    writeFileLog(`${new Date().toISOString()} [INFO] loaded state from ${p} (org='${loaded.config.org}', authorsLen=${(loaded.config.authorsText || '').length})`);
+    return loaded;
   } catch (err: any) {
     writeFileLog(`${new Date().toISOString()} [ERROR] failed to load state: ${err?.message || String(err)}`);
     return { ...defaultState };
@@ -418,6 +419,7 @@ function broadcastState() {
 }
 
 ipcMain.handle('state:get', async () => {
+  addLog('info', 'state:get requested by renderer');
   const auth = await checkAuth();
   return {
     config: state.config,
@@ -437,13 +439,14 @@ ipcMain.handle('state:get', async () => {
 });
 
 ipcMain.handle('config:save', async (_evt, cfg: { org: string; authorsText: string; intervalMinutes: number }) => {
+  addLog('info', `config:save received (org='${cfg?.org || ''}', authorsLen=${(cfg?.authorsText || '').length}, interval=${cfg?.intervalMinutes})`);
   state.config = {
     ...state.config,
     org: (cfg.org || '').trim(),
     authorsText: (cfg.authorsText || '').trim(),
     intervalMinutes: Math.max(1, Number(cfg.intervalMinutes || 5)),
   };
-  addLog('info', `Config saved: org=${state.config.org}, interval=${state.config.intervalMinutes}m`);
+  addLog('info', `Config saved: org='${state.config.org}', authorsLen=${state.config.authorsText.length}, interval=${state.config.intervalMinutes}m`);
   saveState();
   restartPolling();
   broadcastState();
@@ -493,6 +496,14 @@ ipcMain.handle('alert:unsnooze', async (_evt, url: string) => {
 ipcMain.handle('logs:clear', async () => {
   clearLogs();
   addLog('info', 'Logs cleared.');
+  saveState();
+  broadcastState();
+  return { ok: true };
+});
+
+ipcMain.handle('state:reload', async () => {
+  state = loadState();
+  addLog('info', `state:reload applied (org='${state.config.org}', authorsLen=${state.config.authorsText.length})`);
   saveState();
   broadcastState();
   return { ok: true };

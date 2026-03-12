@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('api', {
   snoozeAlert: (url: string, mode: '1h' | 'tomorrow') => ipcRenderer.invoke('alert:snooze', url, mode),
   unsnoozeAlert: (url: string) => ipcRenderer.invoke('alert:unsnooze', url),
   clearLogs: () => ipcRenderer.invoke('logs:clear'),
+  reloadState: () => ipcRenderer.invoke('state:reload'),
   onStateUpdate: (handler: (state: any) => void) => {
     ipcRenderer.on('state:update', (_evt, state) => handler(state));
   },
