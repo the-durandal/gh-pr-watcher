@@ -47,6 +47,7 @@ let pollTimer: NodeJS.Timeout | null = null;
 let ghBinary: string | null = null;
 
 const statePath = () => path.join(app.getPath('userData'), 'state.json');
+const appLogPath = () => path.join(app.getPath('logs'), 'GH PR Watcher', 'app.log');
 
 const defaultState: AppState = {
   config: {
@@ -68,9 +69,13 @@ let state = loadState();
 function loadState(): AppState {
   try {
     const p = statePath();
-    if (!fs.existsSync(p)) return { ...defaultState };
+    if (!fs.existsSync(p)) {
+      writeFileLog(`${new Date().toISOString()} [INFO] no state file found at ${p}; using defaults`);
+      return { ...defaultState };
+    }
     const raw = fs.readFileSync(p, 'utf8');
     const parsed = JSON.parse(raw) as Partial<AppState>;
+    writeFileLog(`${new Date().toISOString()} [INFO] loaded state from ${p}`);
     return {
       ...defaultState,
       ...parsed,
@@ -80,8 +85,19 @@ function loadState(): AppState {
       alerts: parsed.alerts || [],
       logs: parsed.logs || [],
     };
-  } catch {
+  } catch (err: any) {
+    writeFileLog(`${new Date().toISOString()} [ERROR] failed to load state: ${err?.message || String(err)}`);
     return { ...defaultState };
+  }
+}
+
+function writeFileLog(line: string) {
+  try {
+    const p = appLogPath();
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.appendFileSync(p, `${line}\n`, 'utf8');
+  } catch {
+    // best effort only
   }
 }
 
@@ -89,11 +105,14 @@ function saveState() {
   const p = statePath();
   fs.mkdirSync(path.dirname(p), { recursive: true });
   fs.writeFileSync(p, JSON.stringify(state, null, 2));
+  writeFileLog(`${new Date().toISOString()} [INFO] state saved -> ${p}`);
 }
 
 function addLog(level: LogEntry['level'], message: string) {
-  state.logs.unshift({ ts: Date.now(), level, message });
+  const ts = Date.now();
+  state.logs.unshift({ ts, level, message });
   if (state.logs.length > 500) state.logs = state.logs.slice(0, 500);
+  writeFileLog(`${new Date(ts).toISOString()} [${level.toUpperCase()}] ${message}`);
 }
 
 function clearLogs() {
@@ -390,6 +409,11 @@ function broadcastState() {
     lastCheckAt: state.lastCheckAt,
     lastError: state.lastError,
     authors: getAuthors(),
+    diagnostics: {
+      statePath: statePath(),
+      appLogPath: appLogPath(),
+      version: app.getVersion(),
+    },
   });
 }
 
@@ -403,6 +427,11 @@ ipcMain.handle('state:get', async () => {
     lastCheckAt: state.lastCheckAt,
     lastError: state.lastError,
     authors: getAuthors(),
+    diagnostics: {
+      statePath: statePath(),
+      appLogPath: appLogPath(),
+      version: app.getVersion(),
+    },
     auth,
   };
 });
@@ -471,6 +500,9 @@ ipcMain.handle('logs:clear', async () => {
 
 app.whenReady().then(async () => {
   addLog('info', 'App started.');
+  addLog('info', `App version: ${app.getVersion()}`);
+  addLog('info', `State path: ${statePath()}`);
+  addLog('info', `File log path: ${appLogPath()}`);
   createWindow();
   createTray();
   restartPolling();

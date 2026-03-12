@@ -8,6 +8,7 @@ const checkBtn = document.getElementById('checkBtn') as HTMLButtonElement;
 const alertsEl = document.getElementById('alerts') as HTMLDivElement;
 const authStatusEl = document.getElementById('authStatus') as HTMLParagraphElement;
 const statusEl = document.getElementById('status') as HTMLParagraphElement;
+const diagEl = document.getElementById('diag') as HTMLParagraphElement;
 const logsEl = document.getElementById('logs') as HTMLDivElement;
 const clearLogsBtn = document.getElementById('clearLogsBtn') as HTMLButtonElement;
 
@@ -100,6 +101,10 @@ function render(state: any, auth?: { ok: boolean }) {
   authStatusEl.textContent = auth?.ok
     ? 'GitHub auth: connected'
     : 'GitHub auth: not connected. Run `gh auth login` in terminal.';
+  const d = state.diagnostics;
+  if (d) {
+    diagEl.textContent = `v${d.version} • state: ${d.statePath} • log: ${d.appLogPath}`;
+  }
   renderAlerts(state);
   renderLogs(state);
 }
