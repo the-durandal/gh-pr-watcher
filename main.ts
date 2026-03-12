@@ -310,8 +310,10 @@ function createWindow() {
 
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   win.on('close', (e) => {
-    e.preventDefault();
-    win?.hide();
+    if (!(app as any).isQuitting) {
+      e.preventDefault();
+      win?.hide();
+    }
   });
 }
 
@@ -449,5 +451,5 @@ app.on('before-quit', () => {
 });
 
 app.on('window-all-closed', () => {
-  // Keep tray app alive when all windows close.
+  // no-op: app lifecycle is controlled by tray + explicit Quit.
 });
