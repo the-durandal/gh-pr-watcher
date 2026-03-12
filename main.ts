@@ -84,7 +84,7 @@ function loadState(): AppState {
       alerts: parsed.alerts || [],
       logs: parsed.logs || [],
     };
-    writeFileLog(`${new Date().toISOString()} [INFO] loaded state from ${p} (org='${loaded.config.org}', authorsLen=${(loaded.config.authorsText || '').length})`);
+    writeFileLog(`${new Date().toISOString()} [INFO] loaded state from ${p} (owner='${loaded.config.org}', authorsLen=${(loaded.config.authorsText || '').length})`);
     return loaded;
   } catch (err: any) {
     writeFileLog(`${new Date().toISOString()} [ERROR] failed to load state: ${err?.message || String(err)}`);
@@ -231,22 +231,24 @@ function tomorrow9am() {
 }
 
 async function fetchPRs(): Promise<PR[]> {
-  const org = (state.config.org || '').trim();
+  const owner = (state.config.org || '').trim();
   const authors = getAuthors();
-  if (!org || authors.length === 0) {
-    addLog('warn', 'Skipping check: org or authors are not configured.');
+  if (!owner || authors.length === 0) {
+    addLog('warn', 'Skipping check: owner or authors are not configured.');
     return [];
   }
 
-  addLog('info', `Checking PRs for org=${org}, authors=${authors.join(', ')}`);
+  addLog('info', `Checking PRs for owner=${owner}, authors=${authors.join(', ')}`);
 
   const all: PR[] = [];
   for (const author of authors) {
-    const query = `org:${org} author:${author}`;
     const args = [
       'search',
       'prs',
-      query,
+      '--owner',
+      owner,
+      '--author',
+      author,
       '--limit',
       '100',
       '--json',
@@ -439,14 +441,14 @@ ipcMain.handle('state:get', async () => {
 });
 
 ipcMain.handle('config:save', async (_evt, cfg: { org: string; authorsText: string; intervalMinutes: number }) => {
-  addLog('info', `config:save received (org='${cfg?.org || ''}', authorsLen=${(cfg?.authorsText || '').length}, interval=${cfg?.intervalMinutes})`);
+  addLog('info', `config:save received (owner='${cfg?.org || ''}', authorsLen=${(cfg?.authorsText || '').length}, interval=${cfg?.intervalMinutes})`);
   state.config = {
     ...state.config,
     org: (cfg.org || '').trim(),
     authorsText: (cfg.authorsText || '').trim(),
     intervalMinutes: Math.max(1, Number(cfg.intervalMinutes || 5)),
   };
-  addLog('info', `Config saved: org='${state.config.org}', authorsLen=${state.config.authorsText.length}, interval=${state.config.intervalMinutes}m`);
+  addLog('info', `Config saved: owner='${state.config.org}', authorsLen=${state.config.authorsText.length}, interval=${state.config.intervalMinutes}m`);
   saveState();
   restartPolling();
   broadcastState();
@@ -503,7 +505,7 @@ ipcMain.handle('logs:clear', async () => {
 
 ipcMain.handle('state:reload', async () => {
   state = loadState();
-  addLog('info', `state:reload applied (org='${state.config.org}', authorsLen=${state.config.authorsText.length})`);
+  addLog('info', `state:reload applied (owner='${state.config.org}', authorsLen=${state.config.authorsText.length})`);
   saveState();
   broadcastState();
   return { ok: true };
