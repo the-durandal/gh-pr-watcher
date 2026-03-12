@@ -49,7 +49,8 @@ jobs:
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         run: npm run pack
 
-      - name: Upload packaged artifacts
+      - name: Upload release binaries (tag)
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
         with:
           name: gh-pr-watcher-${{ matrix.os }}
@@ -61,6 +62,16 @@ jobs:
             dist/*.deb
             dist/*.rpm
             dist/*.zip
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload packaged output (branch/PR)
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: gh-pr-watcher-${{ matrix.os }}
+          path: |
+            dist/**
           if-no-files-found: error
           retention-days: 14
 
