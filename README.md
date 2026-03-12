@@ -43,6 +43,21 @@ npm run dist
 
 Artifacts will be in `dist/`.
 
+## Automated Releases
+
+This repo uses **semantic-release** on pushes to `master`:
+
+- Computes next version from Conventional Commits
+- Updates `package.json` and `CHANGELOG.md`
+- Creates git tag (`vX.Y.Z`) and GitHub Release
+- Tag then triggers the build workflow to publish release artifacts
+
+Conventional commit examples:
+
+- `fix: resolve gh path lookup on macOS`
+- `feat: add log export`
+- `feat!: drop legacy config format` (major)
+
 ## macOS note (unsigned builds)
 
 Current releases are not code-signed/notarized yet, so Gatekeeper may block first launch.
