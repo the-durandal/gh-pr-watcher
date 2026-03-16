@@ -9,9 +9,12 @@ contextBridge.exposeInMainWorld('api', {
   openAlert: (url: string) => ipcRenderer.invoke('alert:open', url),
   snoozeAlert: (url: string, mode: '1h' | 'tomorrow') => ipcRenderer.invoke('alert:snooze', url, mode),
   unsnoozeAlert: (url: string) => ipcRenderer.invoke('alert:unsnooze', url),
+  dismissAlert: (id: string) => ipcRenderer.invoke('alert:dismiss', id),
+  clearAlerts: () => ipcRenderer.invoke('alerts:clear'),
   clearLogs: () => ipcRenderer.invoke('logs:clear'),
   reloadState: () => ipcRenderer.invoke('state:reload'),
   onStateUpdate: (handler: (state: any) => void) => {
+    ipcRenderer.removeAllListeners('state:update');
     ipcRenderer.on('state:update', (_evt, state) => handler(state));
   },
 });

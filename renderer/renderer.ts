@@ -7,12 +7,16 @@ const saveBtn = document.getElementById('saveBtn') as HTMLButtonElement;
 const checkBtn = document.getElementById('checkBtn') as HTMLButtonElement;
 const reloadBtn = document.getElementById('reloadBtn') as HTMLButtonElement;
 const alertsEl = document.getElementById('alerts') as HTMLDivElement;
+const clearAlertsBtn = document.getElementById('clearAlertsBtn') as HTMLButtonElement;
 const authStatusEl = document.getElementById('authStatus') as HTMLParagraphElement;
 const statusEl = document.getElementById('status') as HTMLParagraphElement;
 const diagEl = document.getElementById('diag') as HTMLParagraphElement;
 const logsEl = document.getElementById('logs') as HTMLDivElement;
+const logsContainer = document.getElementById('logsContainer') as HTMLDivElement;
+const logsToggleBtn = document.getElementById('logsToggleBtn') as HTMLButtonElement;
 const clearLogsBtn = document.getElementById('clearLogsBtn') as HTMLButtonElement;
 
+let logsCollapsed = true;
 
 function fmtTime(ts?: number | null) {
   if (!ts) return 'never';
@@ -48,17 +52,20 @@ function renderAlerts(state: any) {
   for (const a of alerts) {
     const snoozedUntil = state.snoozes?.[a.url] || 0;
     const div = document.createElement('div');
-    div.className = 'alert';
+    div.className = `alert${a.opened ? ' opened' : ''}`;
+    const draftBadge = a.isDraft ? '<span class="badge draft">DRAFT</span>' : '';
+    const kindBadge = `<span class="badge ${a.kind}">${a.kind === 'new' ? 'NEW' : 'UPDATED'}</span>`;
     div.innerHTML = `
-      <div class="title">${a.kind === 'new' ? 'NEW' : 'UPDATED'} • ${escapeHtml(a.repo)} #${a.number}</div>
+      <div class="title">${kindBadge}${draftBadge} ${escapeHtml(a.repo)} #${a.number}</div>
       <div>${escapeHtml(a.title)}</div>
       <div class="meta">@${escapeHtml(a.author)} • PR state: ${escapeHtml(a.state)} • seen ${relTime(a.createdAt)}</div>
-      <div class="meta">${snoozedUntil > Date.now() ? `Snoozed until ${new Date(snoozedUntil).toLocaleString()}` : 'Not snoozed'}</div>
+      <div class="meta">${snoozedUntil > Date.now() ? `Snoozed until ${new Date(snoozedUntil).toLocaleString()}` : ''}</div>
       <div class="actions">
         <button class="open" data-url="${a.url}">Open</button>
         <button class="snooze" data-url="${a.url}" data-mode="1h">Snooze 1h</button>
         <button class="snooze" data-url="${a.url}" data-mode="tomorrow">Snooze till tomorrow</button>
-        ${snoozedUntil > Date.now() ? `<button class="unsnooze" data-url="${a.url}" data-mode="off">Unsnooze</button>` : ''}
+        ${snoozedUntil > Date.now() ? `<button class="unsnooze" data-url="${a.url}">Unsnooze</button>` : ''}
+        <button class="dismiss" data-id="${a.id}">Dismiss</button>
       </div>
     `;
     alertsEl.appendChild(div);
@@ -67,11 +74,14 @@ function renderAlerts(state: any) {
   alertsEl.querySelectorAll('button').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const url = btn.getAttribute('data-url');
-      const mode = btn.getAttribute('data-mode');
-      if (!url) return;
-      if (!mode) return window.api.openAlert(url);
-      if (mode === 'off') return window.api.unsnoozeAlert(url);
-      await window.api.snoozeAlert(url, mode);
+      const id = btn.getAttribute('data-id');
+      if (btn.classList.contains('open') && url) return window.api.openAlert(url);
+      if (btn.classList.contains('unsnooze') && url) return window.api.unsnoozeAlert(url);
+      if (btn.classList.contains('snooze') && url) {
+        const mode = btn.getAttribute('data-mode');
+        return window.api.snoozeAlert(url, mode);
+      }
+      if (btn.classList.contains('dismiss') && id) return window.api.dismissAlert(id);
     });
   });
 }
@@ -89,6 +99,11 @@ function renderLogs(state: any) {
   }).join('');
 }
 
+function updateLogsVisibility() {
+  logsContainer.style.display = logsCollapsed ? 'none' : '';
+  logsToggleBtn.textContent = logsCollapsed ? 'Show' : 'Hide';
+}
+
 function render(state: any, auth?: { ok: boolean }) {
   orgEl.value = state.config.org || '';
   authorsEl.value = state.config.authorsText || '';
@@ -103,6 +118,7 @@ function render(state: any, auth?: { ok: boolean }) {
   }
   renderAlerts(state);
   renderLogs(state);
+  updateLogsVisibility();
 }
 
 async function saveConfigUi() {
@@ -121,8 +137,10 @@ saveBtn.addEventListener('click', async () => {
 
 checkBtn.addEventListener('click', async () => {
   checkBtn.disabled = true;
+  checkBtn.textContent = 'Checking…';
   const res = await window.api.checkNow();
   checkBtn.disabled = false;
+  checkBtn.textContent = 'Check now';
   statusEl.textContent = res?.message || 'Checked.';
 });
 
@@ -135,6 +153,15 @@ clearLogsBtn.addEventListener('click', async () => {
   await window.api.clearLogs();
 });
 
+clearAlertsBtn.addEventListener('click', async () => {
+  await window.api.clearAlerts();
+});
+
+logsToggleBtn.addEventListener('click', () => {
+  logsCollapsed = !logsCollapsed;
+  updateLogsVisibility();
+});
+
 let autoSaveTimer: number | undefined;
 function scheduleAutoSave() {
   if (autoSaveTimer) window.clearTimeout(autoSaveTimer);
@@ -142,7 +169,7 @@ function scheduleAutoSave() {
     saveConfigUi().catch(() => {
       statusEl.textContent = 'Auto-save failed';
     });
-  }, 500);
+  }, 500) as unknown as number;
 }
 
 orgEl.addEventListener('input', scheduleAutoSave);

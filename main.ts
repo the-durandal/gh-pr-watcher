@@ -45,6 +45,7 @@ let tray: Tray | null = null;
 let win: BrowserWindow | null = null;
 let pollTimer: NodeJS.Timeout | null = null;
 let ghBinary: string | null = null;
+let checkInFlight = false;
 
 const statePath = () => path.join(app.getPath('userData'), 'state.json');
 const appLogPath = () => path.join(app.getPath('logs'), 'GH PR Watcher', 'app.log');
@@ -284,6 +285,11 @@ async function fetchPRs(): Promise<PR[]> {
 }
 
 async function runCheck(manual = false) {
+  if (checkInFlight) {
+    addLog('warn', 'Check already in progress; skipping.');
+    return { ok: false, message: 'Check already in progress.' };
+  }
+  checkInFlight = true;
   try {
     addLog('info', manual ? 'Manual check started.' : 'Scheduled check started.');
     const auth = await checkAuth();
@@ -342,6 +348,8 @@ async function runCheck(manual = false) {
     saveState();
     broadcastState();
     return { ok: false, message: state.lastError };
+  } finally {
+    checkInFlight = false;
   }
 }
 
@@ -468,6 +476,24 @@ ipcMain.handle('auth:help', async () => {
 ipcMain.handle('alert:open', async (_evt, url: string) => {
   addLog('info', `Opened PR in browser: ${url}`);
   shell.openExternal(url);
+  const alert = state.alerts.find((a) => a.url === url);
+  if (alert) alert.opened = true;
+  saveState();
+  broadcastState();
+  return { ok: true };
+});
+
+ipcMain.handle('alert:dismiss', async (_evt, id: string) => {
+  state.alerts = state.alerts.filter((a) => a.id !== id);
+  addLog('info', `Dismissed alert: ${id}`);
+  saveState();
+  broadcastState();
+  return { ok: true };
+});
+
+ipcMain.handle('alerts:clear', async () => {
+  state.alerts = [];
+  addLog('info', 'All alerts cleared.');
   saveState();
   broadcastState();
   return { ok: true };

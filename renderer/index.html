@@ -33,16 +33,24 @@
       </section>
 
       <section class="card">
-        <h2>Notification Center</h2>
+        <div class="header-row">
+          <h2>Notification Center</h2>
+          <button id="clearAlertsBtn" class="danger">Clear all</button>
+        </div>
         <div id="alerts"></div>
       </section>
 
       <section class="card">
         <div class="header-row">
           <h2>Logs</h2>
-          <button id="clearLogsBtn" class="danger">Clear logs</button>
+          <div class="row-tight">
+            <button id="logsToggleBtn" class="secondary">Show</button>
+            <button id="clearLogsBtn" class="danger">Clear</button>
+          </div>
         </div>
-        <div id="logs"></div>
+        <div id="logsContainer">
+          <div id="logs"></div>
+        </div>
       </section>
     </main>
 
