@@ -1,4 +1,4 @@
-export {};
+interface Window { api: any; }
 
 const orgEl = document.getElementById('org') as HTMLInputElement;
 const authorsEl = document.getElementById('authors') as HTMLTextAreaElement;
@@ -13,11 +13,6 @@ const diagEl = document.getElementById('diag') as HTMLParagraphElement;
 const logsEl = document.getElementById('logs') as HTMLDivElement;
 const clearLogsBtn = document.getElementById('clearLogsBtn') as HTMLButtonElement;
 
-declare global {
-  interface Window {
-    api: any;
-  }
-}
 
 function fmtTime(ts?: number | null) {
   if (!ts) return 'never';
