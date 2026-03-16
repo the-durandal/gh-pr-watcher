@@ -1,6 +1,6 @@
 {
   "name": "gh-pr-watcher",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Tray app to monitor GitHub PRs by author/org via gh CLI",
   "main": "dist/main.js",
   "scripts": {
